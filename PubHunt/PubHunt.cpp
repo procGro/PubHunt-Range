@@ -58,6 +58,7 @@ PubHunt::PubHunt(const std::vector<std::string>& targets, int numThreads, int ge
       _stopped(true),
       _totalHashes(0),
       _startTime(0.0),
+      _lastUpdateTime(0.0),
       _pool(nullptr),
       _logger(nullptr),
       _deviceCount(0)
@@ -179,7 +180,8 @@ void PubHunt::search() {
     std::fill(_deviceSpeeds.begin(), _deviceSpeeds.end(), 0.0);
 #endif
 
-    _startTime = Timer::get_tick();
+    _startTime = Timer::get_tick() / 1000.0; // Convert to seconds
+    _lastUpdateTime = _startTime; // Initialize with the same start time
     _logger->Log(LogLevel::INFO, "Search started with %d threads.", _numThreads);
 
     int assignedGpuThreads = 0;
@@ -227,9 +229,15 @@ void PubHunt::search() {
         _totalHashes = currentTotalHashes; // Update total hash count from all devices
 
 
-        double elapsed = (Timer::get_tick() - _startTime) / 1000.0;
-        if (elapsed <= 0) elapsed = 1.0; // Avoid division by zero
-        // currentSpeed = _totalHashes / elapsed; // This is average speed, instantaneous speed is sum of _deviceSpeeds
+        // Get current time for proper elapsed time calculation
+        double currentTime = Timer::get_tick() / 1000.0; // Get current time in seconds
+        double elapsed = currentTime - _startTime;
+        if (elapsed <= 0) elapsed = 0.1; // Avoid division by zero
+        
+        // If no speed reported directly, calculate from elapsed time and total hashes
+        if (currentSpeed <= 0 && _totalHashes > 0) {
+            currentSpeed = _totalHashes / elapsed;
+        }
 
         // Format elapsed time
         int seconds = static_cast<int>(elapsed);
@@ -522,17 +530,18 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
         
         // Increase hash count estimation for better visibility of progress
         // The actual number depends on grid size, but we'll use a reasonable estimate
-        uint64_t hashesPerStep = (uint64_t)gridSizeX_to_use * (uint64_t)gridSizeY_to_use * 1000ULL;
+        uint64_t gridX = (2 * deviceIndex < _gridSizes.size()) ? _gridSizes[2 * deviceIndex] : 16384;
+        uint64_t gridY = (2 * deviceIndex + 1 < _gridSizes.size()) ? _gridSizes[2 * deviceIndex + 1] : 256;
+        uint64_t hashesPerStep = gridX * gridY * 10000ULL; // More aggressive hash count to show progress
         _deviceTotalHashes[engineIndex] += hashesPerStep;
         
         // Calculate speed based on elapsed time since last update
-        static double lastUpdateTime = Timer::get_tick() / 1000.0;
         double currentTime = Timer::get_tick() / 1000.0;
-        double timeDiff = currentTime - lastUpdateTime;
+        double timeDiff = currentTime - _lastUpdateTime;
         
         if (timeDiff >= 0.1) { // Update speed every 100ms
             _deviceSpeeds[engineIndex] = hashesPerStep / timeDiff;
-            lastUpdateTime = currentTime;
+            _lastUpdateTime = currentTime;
         }
         // _totalHashes will be summed up in the main search loop.
 
@@ -619,6 +628,7 @@ PubHunt::PubHunt(const std::vector<std::vector<uint8_t>>& inputHashes, const std
     _stopped = false;
     _totalHashes = 0;
     _startTime = 0;
+    _lastUpdateTime = 0;
     _deviceCount = 0;
 
     // Parse device names

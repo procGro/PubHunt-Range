@@ -129,6 +129,8 @@ private:
 	std::string _end_key_hex;
 
 	std::vector<uint64_t> _deviceTotalHashes;
+	double _startTime;
+	double _lastUpdateTime; // Track last speed update time
 	std::vector<double> _deviceSpeeds;
 	std::vector<std::string> _deviceNamesList; // Parsed from _deviceNames
 	std::vector<int> _gridSizes; // Stores grid sizes for each GPU
@@ -140,7 +142,6 @@ private:
 	bool _running;
 	bool _stopped;
 	uint64_t _totalHashes;
-	double _startTime;
 	std::mutex _mutex;
 	ThreadPool* _pool;
 	Logger* _logger;
