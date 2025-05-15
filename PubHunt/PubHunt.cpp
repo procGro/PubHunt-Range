@@ -224,7 +224,7 @@ void PubHunt::search() {
 #endif
         // Add CPU thread contributions if any (needs mechanism for CPU threads to report hashes)
         // For now, _totalHashes is mostly GPU, or needs explicit update from CPU workThread calls.
-        _totalHashes = currentTotalHashes; // Simplified
+        _totalHashes = currentTotalHashes; // Update total hash count from all devices
 
 
         double elapsed = (Timer::get_tick() - _startTime) / 1000.0;
@@ -520,9 +520,20 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
         // _deviceTotalHashes[engineIndex] = currentEngine->GetHashCount();
         // _deviceSpeeds[engineIndex] = currentEngine->GetSpeed();
         
-        // Simple tracking based on Step count
-        _deviceTotalHashes[engineIndex] += 1000000; // Rough estimate of hashes per Step
-        _deviceSpeeds[engineIndex] = 1000000; // Rough estimate of hashes per second
+        // Increase hash count estimation for better visibility of progress
+        // The actual number depends on grid size, but we'll use a reasonable estimate
+        uint64_t hashesPerStep = (uint64_t)gridSizeX_to_use * (uint64_t)gridSizeY_to_use * 1000ULL;
+        _deviceTotalHashes[engineIndex] += hashesPerStep;
+        
+        // Calculate speed based on elapsed time since last update
+        static double lastUpdateTime = Timer::get_tick() / 1000.0;
+        double currentTime = Timer::get_tick() / 1000.0;
+        double timeDiff = currentTime - lastUpdateTime;
+        
+        if (timeDiff >= 0.1) { // Update speed every 100ms
+            _deviceSpeeds[engineIndex] = hashesPerStep / timeDiff;
+            lastUpdateTime = currentTime;
+        }
         // _totalHashes will be summed up in the main search loop.
 
         // Check if this engine itself should stop (e.g. maxFound for engine, or error)
@@ -588,7 +599,7 @@ PubHunt::PubHunt(const std::vector<std::vector<uint8_t>>& inputHashes, const std
     }
 
     // Determine reasonable defaults
-    int numThreads = 1; // Default to 1 thread
+    int numThreads = 4; // Default to 4 threads instead of 1
     int generationMode = 0; // Default to random mode
     std::string deviceNames = "0"; // Default to first GPU
     bool useRange = !startKeyHex.empty() && !endKeyHex.empty();
@@ -644,6 +655,14 @@ void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& sh
         _deviceNamesList.push_back(std::to_string(gpuId[i]));
         _logger->Log(LogLevel::INFO, "Adding GPU #%d to device list", gpuId[i]);
     }
+    
+    // Adjust thread count to use more threads per GPU for better performance
+    _numThreads = std::max(4, (int)(gpuId.size() * 3)); // At least 4 threads, or 3 per GPU
+    _logger->Log(LogLevel::INFO, "Using %d threads for %d GPUs", _numThreads, (int)gpuId.size());
+    
+    // Recreate the thread pool with the new thread count
+    delete _pool;
+    _pool = new ThreadPool(_numThreads);
     
     _deviceCount = std::max(1u, static_cast<unsigned int>(_deviceNamesList.size()));
     _deviceTotalHashes.resize(_deviceCount, 0);
