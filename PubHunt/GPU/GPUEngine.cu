@@ -334,6 +334,12 @@ GPUEngine::~GPUEngine()
 		CudaSafeCall(cudaFree(dev_start_key_));
 		CudaSafeCall(cudaFree(dev_range_span_));
 	}
+	
+	// Free cuRAND states if allocated
+	if (dev_rand_states_ != nullptr) {
+		CudaSafeCall(cudaFree(dev_rand_states_));
+		dev_rand_states_ = nullptr;
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -417,26 +423,54 @@ bool GPUEngine::Step(std::vector<ITEM>& dataFound, bool spinWait)
 
 bool GPUEngine::Randomize()
 {
-	// Use a much simpler randomization that doesn't rely on cuRAND
-	// Generate key data directly using cudaMemset and a predefined pattern
-	
-	// First, clear the memory to avoid any previous issues
-	CudaSafeCall(cudaMemset(inputKey, 0, nbThread * 4 * sizeof(uint64_t)));
-	
-	// Then set a simple pattern for testing - this still allows the GPU to process something
-	// In a real implementation, you'd want actual random data
-	uint64_t* hostKeys = new uint64_t[nbThread * 4];
-	for (int i = 0; i < nbThread * 4; i++) {
-		// Simple pattern: thread index * multiplier + seed based on current time
-		uint64_t seed = std::time(0) ^ (i << 8);
-		hostKeys[i] = seed;
+	// Properly use the range information for key generation
+	if (use_range_) {
+		// Initialize cuRAND states if not already initialized
+		if (dev_rand_states_ == nullptr) {
+			printf("Initializing cuRAND states for range-based search...\n");
+			
+			// Allocate memory for cuRAND states, one per thread
+			CudaSafeCall(cudaMalloc((void**)&dev_rand_states_, nbThread * sizeof(curandStatePhilox4_32_10_t)));
+			
+			// Initialize cuRAND states with current time as seed
+			unsigned long long seed = (unsigned long long)std::time(0);
+			int threadsPerBlock = 256;
+			int blocks = (nbThread + threadsPerBlock - 1) / threadsPerBlock;
+			
+			init_curand_states_kernel<<<blocks, threadsPerBlock>>>(
+				dev_rand_states_, seed, nbThread);
+			
+			CudaSafeCall(cudaDeviceSynchronize());
+			CudaSafeCall(cudaGetLastError());
+		}
+		
+		// Use the generate_keys_in_range_kernel to generate keys within the specified range
+		int threadsPerBlock = 256;
+		int blocks = (nbThread + threadsPerBlock - 1) / threadsPerBlock;
+		
+		generate_keys_in_range_kernel<<<blocks, threadsPerBlock>>>(
+			inputKey, dev_rand_states_, dev_start_key_, dev_range_span_, nbThread);
+		
+		CudaSafeCall(cudaDeviceSynchronize());
+		CudaSafeCall(cudaGetLastError());
+		
+		return true;
+	} 
+	else {
+		// Fall back to the original simple randomization when no range is specified
+		CudaSafeCall(cudaMemset(inputKey, 0, nbThread * 4 * sizeof(uint64_t)));
+		
+		uint64_t* hostKeys = new uint64_t[nbThread * 4];
+		for (int i = 0; i < nbThread * 4; i++) {
+			uint64_t seed = std::time(0) ^ (i << 8);
+			hostKeys[i] = seed;
+		}
+		
+		CudaSafeCall(cudaMemcpy(inputKey, hostKeys, nbThread * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice));
+		delete[] hostKeys;
+		
+		return true;
 	}
-	
-	// Copy the host keys to device
-	CudaSafeCall(cudaMemcpy(inputKey, hostKeys, nbThread * 4 * sizeof(uint64_t), cudaMemcpyHostToDevice));
-	delete[] hostKeys;
-	
-	return true;
 }
 
 // ----------------------------------------------------------------------------
