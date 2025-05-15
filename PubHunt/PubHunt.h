@@ -131,6 +131,7 @@ private:
 	std::vector<uint64_t> _deviceTotalHashes;
 	std::vector<double> _deviceSpeeds;
 	std::vector<std::string> _deviceNamesList; // Parsed from _deviceNames
+	std::vector<int> _gridSizes; // Stores grid sizes for each GPU
 #ifdef WITHGPU
 	std::vector<GPUEngine*> _gpuEngines;
 #endif

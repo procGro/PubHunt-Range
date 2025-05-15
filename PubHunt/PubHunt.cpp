@@ -368,9 +368,7 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
     // Convert deviceName (which is a GPU ID string like "0") to integer
     int gpuId_to_use = std::stoi(deviceName);
     
-    // Calculate thread group and per-group values from the gridSize vector
-    // The threadId/engineIndex should correspond to the same index in _deviceNamesList
-    // and thus the same index in the original gpuId vector
+    // Default grid size values
     int gridSizeX_to_use = 8192; // Default
     int gridSizeY_to_use = 256;  // Default
     
@@ -380,6 +378,18 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
         if (_deviceNamesList[i] == deviceName) {
             deviceIndex = i;
             break;
+        }
+    }
+    
+    // If we have a valid gridSize specified from the command line, use it
+    if (deviceIndex < _deviceNamesList.size()) {
+        // GridSize should be specified in pairs (x,y) for each GPU
+        // Check if we have gridSize specified for this GPU in the global state
+        if (2 * deviceIndex + 1 < _gridSizes.size()) {
+            gridSizeX_to_use = _gridSizes[2 * deviceIndex];
+            gridSizeY_to_use = _gridSizes[2 * deviceIndex + 1];
+            _logger->Log(LogLevel::INFO, "Using specified grid size for GPU #%d: %dx%d", 
+                       gpuId_to_use, gridSizeX_to_use, gridSizeY_to_use);
         }
     }
     
@@ -600,6 +610,8 @@ void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& sh
     _gpuEngines.resize(_deviceCount, nullptr);
     
     // Store gridSize per device - these should come in pairs (x,y) for each GPU
+    _gridSizes = gridSize; // Store the grid sizes for later use
+    
     if (gridSize.size() == gpuId.size() * 2) {
         for (size_t i = 0; i < gpuId.size(); i++) {
             _logger->Log(LogLevel::INFO, "GPU #%d grid size: %dx%d", 
