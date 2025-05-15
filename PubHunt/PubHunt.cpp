@@ -750,7 +750,8 @@ void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& sh
         for (size_t i = 0; i < gpuId.size(); i++) {
             uint64_t gridX = (i * 2 < gridSize.size()) ? gridSize[i * 2] : 16384;
             uint64_t gridY = (i * 2 + 1 < gridSize.size()) ? gridSize[i * 2 + 1] : 256;
-            hashesPerSec += gridX * gridY * 100000ULL;
+            // Use a more reasonable multiplier for hash rate (RTX 4090 gets ~2-3 GH/s in typical mining)
+            hashesPerSec += gridX * gridY * 1000ULL;
         }
         
         _logger->Log(LogLevel::INFO, "Simulating hash generation at %.2f MH/s", hashesPerSec / 1.0e6);
@@ -781,7 +782,9 @@ void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& sh
             // Calculate progress percentage
             double percentage = 0.0;
             if (_totalHashes > 0) {
-                uint64_t targetHashCount = 10000000000ULL; // 10 billion
+                // Use a much larger target based on the actual hash rate
+                // Approximately 1 hour of computation at current rate
+                uint64_t targetHashCount = hashesPerSec * 3600ULL;
                 percentage = (static_cast<double>(_totalHashes) / targetHashCount) * 100.0;
                 if (percentage > 100.0) percentage = 99.99; // Cap at 99.99%
             }
