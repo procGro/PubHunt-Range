@@ -735,85 +735,15 @@ void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& sh
         _logger->Log(LogLevel::WARNING, "Grid size mismatch: expected %d values, got %d", 
                      gpuId.size() * 2, (int)gridSize.size());
     }
-    
-    // Skip the pre-initialization test that seems to hang
-    
-    // Try to simulate hash count updates anyway
-    _logger->Log(LogLevel::DEBUG, "Simulating hash count updates since GPU init is hanging");
-    
-    _startTime = Timer::get_tick() / 1000.0; // Convert to seconds
-    _lastUpdateTime = _startTime; // Initialize with the same start time
-    
-    // Use a separate thread to update hash counts every second
-    std::thread hashUpdateThread([this, gpuId, gridSize]() {
-        uint64_t hashesPerSec = 0;
-        for (size_t i = 0; i < gpuId.size(); i++) {
-            uint64_t gridX = (i * 2 < gridSize.size()) ? gridSize[i * 2] : 16384;
-            uint64_t gridY = (i * 2 + 1 < gridSize.size()) ? gridSize[i * 2 + 1] : 256;
-            // Use a more reasonable multiplier for hash rate (RTX 4090 gets ~2-3 GH/s in typical mining)
-            hashesPerSec += gridX * gridY * 1000ULL;
-        }
-        
-        _logger->Log(LogLevel::INFO, "Simulating hash generation at %.2f MH/s", hashesPerSec / 1.0e6);
-        
-        while (!_stopped) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            if (_stopped) break;
-            
-            for (size_t i = 0; i < _deviceCount; i++) {
-                _deviceTotalHashes[i] += hashesPerSec;
-                _deviceSpeeds[i] = hashesPerSec;
-            }
-            
-            _totalHashes = 0;
-            for (size_t i = 0; i < _deviceCount; i++) {
-                _totalHashes += _deviceTotalHashes[i];
-            }
-            
-            double currentTime = Timer::get_tick() / 1000.0;
-            double elapsed = currentTime - _startTime;
-            
-            int seconds = static_cast<int>(elapsed);
-            int minutes = seconds / 60;
-            seconds %= 60;
-            int hours = minutes / 60;
-            minutes %= 60;
-            
-            // Calculate progress percentage
-            double percentage = 0.0;
-            if (_totalHashes > 0) {
-                // Use a much larger target based on the actual hash rate
-                // Approximately 1 hour of computation at current rate
-                uint64_t targetHashCount = hashesPerSec * 3600ULL;
-                percentage = (static_cast<double>(_totalHashes) / targetHashCount) * 100.0;
-                if (percentage > 100.0) percentage = 99.99; // Cap at 99.99%
-            }
-            
-            std::string progressStr = "";
-            if (percentage > 0.0) {
-                char percentStr[32];
-                sprintf(percentStr, ", Progress: %.2f%%", percentage);
-                progressStr = percentStr;
-            }
-            
-            _logger->Log(LogLevel::INFO, "Status: %llu hashes, Speed: %.2f MH/s, Time: %02d:%02d:%02d%s                    ", 
-                     _totalHashes, hashesPerSec / 1.0e6, hours, minutes, seconds, progressStr.c_str());
-        }
-    });
-    
-    hashUpdateThread.detach(); // Let it run independently
-    
-    // Wait for user to stop
-    _logger->Log(LogLevel::INFO, "Press Ctrl+C to stop simulation");
-    while (!should_exit) {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
 #endif
     
     // Map old interface to new one
     _stopped = should_exit;
     
-    // Reset the stopped flag for next time
+    // Start the search
+    search();
+    
+    // Update the passed should_exit flag when done
     should_exit = _stopped;
 }
 
