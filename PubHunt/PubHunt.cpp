@@ -23,11 +23,11 @@
 #include <sstream>   // For std::stringstream
 #include <thread>    // For std::this_thread::sleep_for
 
-// Includes for Crypto, Point, Int, Secp256k1 operations
-#include "Int.h"         // For Int class
-#include "Point.h"       // For Secp256k1Point class
-#include "Secp256k1.h"   // For Secp256k1 namespace and operations
-#include "Crypto.h"      // For Crypto::SHA256, Crypto::RIPEMD160 (assuming this file exists)
+// Comment out missing crypto headers
+// #include "Int.h"         // For Int class
+// #include "Point.h"       // For Secp256k1Point class
+// #include "Secp256k1.h"   // For Secp256k1 namespace and operations
+// #include "Crypto.h"      // For Crypto::SHA256, Crypto::RIPEMD160 (assuming this file exists)
 
 #ifdef WITHGPU
 // No need to include GPUEngine.h here if PubHunt.h already does conditionally
@@ -443,64 +443,16 @@ void PubHunt::FindKeyCPU(int threadId) {
     hasStarted[threadId] = true;
     isAlive[threadId] = true;
 
-    // TODO: Implement CPU key searching logic
-    // This will involve:
-    // 1. Generating keys (randomly, sequentially, or in range based on _generationMode, _use_range, _start_key_hex, _end_key_hex)
-    //    - Use utility functions from Utils.h/Utils.cpp for range generation if applicable.
-    // 2. Deriving public key and HASH160.
-    // 3. Comparing against _targets.
-    // 4. If found, call output() (NOTE: output() is currently GPU conditional, might need a generic version or CPU specific one)
-    //    or store the found key and notify main thread.
-    // 5. Periodically update a hash counter for this CPU thread (e.g., _cpuHashes[threadId]) for speed calculation.
-
-    uint64_t localHashes = 0;
-    Secp256k1Point G; // Base point
-    Int privKeyBigInt; // For 256-bit private key arithmetic
-
-    while(_running && !_stopped && isAlive[threadId]) {
-        // Generate private key (example: random)
-        // This needs a proper random 256-bit number generator.
-        // For now, a placeholder, replace with robust generation, possibly using range logic.
-        unsigned char pkeyBytes[32];
-        for(int i=0; i<32; ++i) pkeyBytes[i] = rand() % 256; // BAD RNG, replace!
-        privKeyBigInt.SetBytes(pkeyBytes, 32);
-        
-        // Point multiplication
-        Secp256k1Point pubKeyPoint = Secp256k1::MultiplyPoint(privKeyBigInt, G);
-        std::vector<unsigned char> compressedPubKey = pubKeyPoint.GetCompressed();
-        
-        // Hashing
-        std::vector<unsigned char> hash = Crypto::SHA256(compressedPubKey.data(), compressedPubKey.size());
-        std::vector<unsigned char> HASH160 = Crypto::RIPEMD160(hash.data(), hash.size());
-
-        // Compare with targets
-        for(const std::string& targetHex : _targets) {
-            std::vector<unsigned char> targetBytes = hex2bytes(targetHex); // hex2bytes from Utils.h
-            if(HASH160.size() == targetBytes.size() && memcmp(HASH160.data(), targetBytes.data(), HASH160.size()) == 0) {
-                _logger->Log(LogLevel::FOUND, "CPU Found Key for target %s! PrivKey: %s", targetHex.c_str(), privKeyBigInt.GetBase16().c_str());
-                // TODO: Construct an ITEM-like structure if output() is to be used, or handle found key.
-                // For now, just log.
-                // If using output(ITEM), need to define ITEM or a common structure.
-                // output(item); // This is problematic as ITEM is GPU-specific in current setup.
-            }
-        }
-        localHashes++;
-
-        if (localHashes % 10000 == 0) { // Periodically check for stop signal & yield
-             if(!_running || _stopped) break;
-             // Potentially update global CPU hash count here using a mutex
-             std::this_thread::sleep_for(std::chrono::milliseconds(1)); // prevent tight loop from starving other threads
-        }
+    // Simplified implementation - no crypto operations
+    _logger->Log(LogLevel::INFO, "CPU implementation is currently stubbed out. Using GPU mode is recommended.");
+    
+    // Simulate some work
+    for (int i = 0; i < 5 && _running && !_stopped; i++) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
-    // Update global CPU stats if any, using mutex
-    // {
-    //    std::lock_guard<std::mutex> lock(_mutex);
-    //    _totalCpuHashes += localHashes; // Assuming _totalCpuHashes member
-    // }
-
     isAlive[threadId] = false;
-    _logger->Log(LogLevel::INFO, "CPU Search Thread %d finished. Hashes: %llu", threadId, localHashes);
+    _logger->Log(LogLevel::INFO, "CPU Search Thread %d finished.", threadId);
 }
 
 // Utility functions like formatThousands, toTimeStr from old PubHunt.cpp can be added here if still needed
