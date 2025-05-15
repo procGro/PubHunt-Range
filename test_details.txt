@@ -1,0 +1,19 @@
+PubHunt Test Case Details
+-------------------------
+
+Target Hash160: be9d31fa3d712c1de1697eb61d1e41fcbab5b0e7
+Expected Public Key (Compressed): 03abead16bdf149ca87efe567c86307b2dc95d73235a4d089d359126c4f021d2b2
+
+Search Range:
+Start: 0000000000000000000000000000000000000000800000000000000000000000
+End:   0000000000000000000000000000000000000000ffffffffffffffffffffffff
+
+Bit Range: 96 bits
+
+This test verifies if PubHunt can successfully find the public key that corresponds to the 
+given Hash160 within the specified range. The correct public key is known to be within this range.
+
+Notes:
+- The range covers all possible values in a 96-bit space starting from 0x800000000000000000000000
+- This is a controlled test with a known answer to validate program functionality
+- If PubHunt is working correctly, it should find and report the public key 
