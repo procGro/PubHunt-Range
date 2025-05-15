@@ -3,13 +3,13 @@
 #
 
 SRC = IntGroup.cpp Main.cpp Random.cpp Timer.cpp \
-      Int.cpp IntMod.cpp Utils.cpp PubHunt.cpp
+      Int.cpp IntMod.cpp Utils.cpp PubHunt.cpp ThreadPool.cpp
 
 OBJDIR = obj
 
 OBJET = $(addprefix $(OBJDIR)/, \
         IntGroup.o Main.o Random.o Timer.o Int.o \
-        IntMod.o PubHunt.o Utils.o GPU/GPUEngine.o)
+        IntMod.o PubHunt.o Utils.o ThreadPool.o GPU/GPUEngine.o)
 
 CXX        = g++
 CUDA       = /usr/local/cuda
