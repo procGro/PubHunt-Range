@@ -459,8 +459,13 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
         // Convert _targets to uint32_t hash160 array
         std::vector<uint32_t> hash160Array;
         for (const auto& target : _targets) {
+            // Print the target for debugging
+            _logger->Log(LogLevel::DEBUG, "Target hash: %s", target.c_str());
+            
             // Assuming each target is a hex string of a 20-byte hash
             std::vector<unsigned char> bytes = hex2bytes(target);
+            _logger->Log(LogLevel::DEBUG, "Target bytes length: %d", (int)bytes.size());
+            
             if (bytes.size() == 20) { // Proper HASH160 size
                 for (int i = 0; i < 20; i += 4) {
                     uint32_t value = 0;
@@ -472,19 +477,30 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
             }
         }
         
+        _logger->Log(LogLevel::DEBUG, "Processed %d hashes into %d uint32_t values", 
+                   (int)_targets.size(), (int)hash160Array.size());
+        
         // GPUEngine constructor signature:
         // GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_t maxFound,
         //          const uint32_t* hash160, int numHash160, const std::string& startKeyHex, const std::string& endKeyHex);
-        _gpuEngines[engineIndex] = new GPUEngine(
-            gridSizeX_to_use,                              // nbThreadGroup
-            gridSizeY_to_use,                              // nbThreadPerGroup
-            gpuId_to_use,                                  // gpuId
-            100,                                           // maxFound 
-            hash160Array.empty() ? nullptr : hash160Array.data(), // hash160 array
-            hash160Array.size() / 5,                       // numHash160 (number of 160-bit hashes)
-            _start_key_hex,                                // startKeyHex
-            _end_key_hex                                   // endKeyHex
-        );
+        try {
+            _gpuEngines[engineIndex] = new GPUEngine(
+                gridSizeX_to_use,                              // nbThreadGroup
+                gridSizeY_to_use,                              // nbThreadPerGroup
+                gpuId_to_use,                                  // gpuId
+                100,                                           // maxFound 
+                hash160Array.empty() ? nullptr : hash160Array.data(), // hash160 array
+                hash160Array.size() / 5,                       // numHash160 (number of 160-bit hashes)
+                _start_key_hex,                                // startKeyHex
+                _end_key_hex                                   // endKeyHex
+            );
+            _logger->Log(LogLevel::DEBUG, "GPUEngine constructor completed");
+        } catch (const std::exception& e) {
+            _logger->Log(LogLevel::ERROR, "Exception creating GPUEngine: %s", e.what());
+            isAlive[engineIndex] = false;
+            hasStarted[engineIndex] = true;
+            return;
+        }
         
         if (!_gpuEngines[engineIndex] || _gpuEngines[engineIndex]->deviceName.empty()) {
              _logger->Log(LogLevel::ERROR, "GPUEngine initialization failed for device %s", _deviceNamesList[engineIndex].c_str());
@@ -510,10 +526,24 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
     hasStarted[engineIndex] = true; // Mark as started
     isAlive[engineIndex] = true;    // Mark as alive
 
+    // Enable all debug logs
+    _logger->SetMinLevel(LogLevel::DEBUG);
+    _logger->Log(LogLevel::DEBUG, "Starting GPU search loop on engine %d", engineIndex);
+
     std::vector<ITEM> found_items;
+    int stepCount = 0;  // Count steps for debug output
+    
     // Loop while search is active and this specific engine is running
     while (_running && !_stopped && isAlive[engineIndex]) {
+        _logger->Log(LogLevel::DEBUG, "Calling GPUEngine::Step() - iteration %d", stepCount++);
+        
+        // Clear any previous items
+        found_items.clear();
+        
         bool step_ok = currentEngine->Step(found_items); // Removed batchflag
+        
+        _logger->Log(LogLevel::DEBUG, "GPUEngine::Step() returned %s", step_ok ? "true" : "false");
+        
         if (!step_ok) {
             _logger->Log(LogLevel::WARNING, "GPUEngine::Step failed on device %s. Stopping this engine.", currentEngine->deviceName.c_str());
             isAlive[engineIndex] = false; // Stop this specific engine's loop
@@ -522,12 +552,13 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
 
         if (!_running || _stopped) break; // Global stop signal
 
+        _logger->Log(LogLevel::DEBUG, "Step complete, found %d items", (int)found_items.size());
+        
         for (const auto& item : found_items) {
             if (!_running || _stopped) break;
             output(item); // Call the output method
             // Potentially update global found count if needed (e.g., _nbFoundKey++)
         }
-        found_items.clear();
 
         // Update stats for this engine
         // GPUEngine doesn't provide these methods, so we need to track ourselves
@@ -547,18 +578,13 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
             _deviceSpeeds[engineIndex] = hashesPerStep / timeDiff;
             _lastUpdateTime = currentTime;
             
-            // Debug output at the start to verify hash counting is working
-            static int debugCounter = 0;
-            if (debugCounter < 3) {
-                _logger->Log(LogLevel::DEBUG, "Hash update: +%llu, speed: %.2f MH/s", 
-                            hashesPerStep, _deviceSpeeds[engineIndex] / 1e6);
-                debugCounter++;
-            }
+            // Always output hash updates to help debug
+            _logger->Log(LogLevel::DEBUG, "Hash update: +%llu, speed: %.2f MH/s", 
+                        hashesPerStep, _deviceSpeeds[engineIndex] / 1e6);
         }
-        // _totalHashes will be summed up in the main search loop.
-
-        // Check if this engine itself should stop (e.g. maxFound for engine, or error)
-        // if (currentEngine->ShouldStop()) isAlive[engineIndex] = false;
+        
+        // Slow down the loop a bit to avoid excessive logging
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     isAlive[engineIndex] = false; // Mark as not alive when loop finishes
@@ -671,6 +697,9 @@ void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& sh
     // Store the GPU IDs and gridSizes for use by the GPU engines
     _logger->Log(LogLevel::INFO, "Setting up with %d GPUs", (int)gpuId.size());
     
+    // Set debug level for this run
+    _logger->SetMinLevel(LogLevel::DEBUG);
+    
     // We have different device naming/map now
     _deviceNamesList.clear();
     for (size_t i = 0; i < gpuId.size(); i++) {
@@ -705,6 +734,49 @@ void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& sh
     } else {
         _logger->Log(LogLevel::WARNING, "Grid size mismatch: expected %d values, got %d", 
                      gpuId.size() * 2, (int)gridSize.size());
+    }
+    
+    // Try to directly initialize at least the first GPU engine to check for issues
+    if (gpuId.size() > 0) {
+        int firstGpuId = gpuId[0];
+        int gridX = (gridSize.size() >= 2) ? gridSize[0] : 8192;
+        int gridY = (gridSize.size() >= 2) ? gridSize[1] : 256;
+        
+        _logger->Log(LogLevel::DEBUG, "Pre-initializing GPU #%d with grid %dx%d to check for issues", 
+                    firstGpuId, gridX, gridY);
+        
+        // Convert _targets to uint32_t hash160 array (same as in FindKeyGPU)
+        std::vector<uint32_t> hash160Array;
+        for (const auto& target : _targets) {
+            std::vector<unsigned char> bytes = hex2bytes(target);
+            if (bytes.size() == 20) {
+                for (int i = 0; i < 20; i += 4) {
+                    uint32_t value = 0;
+                    for (int j = 0; j < 4 && (i + j) < 20; j++) {
+                        value |= ((uint32_t)bytes[i + j]) << (j * 8);
+                    }
+                    hash160Array.push_back(value);
+                }
+            }
+        }
+        
+        _logger->Log(LogLevel::DEBUG, "Direct test: Will create GPUEngine for init test");
+        
+        try {
+            GPUEngine* testEngine = new GPUEngine(
+                gridX, gridY, firstGpuId, 100,
+                hash160Array.empty() ? nullptr : hash160Array.data(),
+                hash160Array.size() / 5,
+                _start_key_hex, _end_key_hex
+            );
+            
+            _logger->Log(LogLevel::DEBUG, "GPU init test succeeded: %s", 
+                        testEngine->deviceName.empty() ? "NO_NAME" : testEngine->deviceName.c_str());
+            
+            delete testEngine; // We were just testing
+        } catch (const std::exception& e) {
+            _logger->Log(LogLevel::ERROR, "GPU init test failed: %s", e.what());
+        }
     }
 #endif
     
