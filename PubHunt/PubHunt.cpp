@@ -349,15 +349,11 @@ void PubHunt::workThread(int threadId, const std::string& deviceName) {
         FindKeyCPU(threadId);
     } else {
 #ifdef WITHGPU
-        // GPU tasks are managed by GPUEngine instances, map threadId to a GPUEngine index if necessary.
-        // Here, deviceName could be a specific GPU ID string.
-        // We need to map threadId to the correct GPUEngine instance.
-        // Assuming one GPUEngine per device listed in _deviceNamesList and threadId corresponds to this list index.
-        if ((unsigned int)threadId < _deviceCount && (unsigned int)threadId < _gpuEngines.size()) {
-            FindKeyGPU(threadId, deviceName); // Pass threadId as engine index, and deviceName for context
-        } else {
-            _logger->Log(LogLevel::ERROR, "ThreadId %d does not map to a configured GPU engine.", threadId);
-        }
+        // Convert device name (which is a GPU ID string) to actual GPU ID
+        int gpuId = std::stoi(deviceName);
+        _logger->Log(LogLevel::INFO, "Setting up GPU engine for GPU #%d", gpuId);
+        
+        FindKeyGPU(threadId, deviceName); // Pass threadId and deviceName
 #else
         _logger->Log(LogLevel::WARNING, "GPU support not compiled. Thread %d cannot run on GPU.", threadId);
 #endif
@@ -368,65 +364,71 @@ void PubHunt::workThread(int threadId, const std::string& deviceName) {
 }
 
 #ifdef WITHGPU
-void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName /*unused for now, engineIndex maps to device*/) {
+void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
+    // Convert deviceName (which is a GPU ID string like "0") to integer
+    int gpuId_to_use = std::stoi(deviceName);
+    
+    // Calculate thread group and per-group values from the gridSize vector
+    // The threadId/engineIndex should correspond to the same index in _deviceNamesList
+    // and thus the same index in the original gpuId vector
+    int gridSizeX_to_use = 8192; // Default
+    int gridSizeY_to_use = 256;  // Default
+    
+    // Find the position of this device in _deviceNamesList to get the right gridSize
+    size_t deviceIndex = 0;
+    for (size_t i = 0; i < _deviceNamesList.size(); i++) {
+        if (_deviceNamesList[i] == deviceName) {
+            deviceIndex = i;
+            break;
+        }
+    }
+    
     // engineIndex directly corresponds to the index in _gpuEngines and _deviceNamesList
     if (engineIndex < 0 || (unsigned int)engineIndex >= _deviceCount || !_gpuEngines[engineIndex]) {
         // Attempt to create the GPUEngine if it doesn't exist or if it's for a new device context
-        if ((unsigned int)engineIndex < _deviceNamesList.size()) {
-            _logger->Log(LogLevel::INFO, "Initializing GPUEngine for device: %s (Index: %d)", _deviceNamesList[engineIndex].c_str(), engineIndex);
-            // TODO: Need to get gridSizeX, gridSizeY, gpuId from somewhere (e.g. parsed from deviceName or config)
-            // For now, using placeholders or assuming GPUEngine constructor can handle it.
-            // The old TH_PARAM had gpuId, gridSizeX, gridSizeY. These need to come from Main.cpp parsing.
-            // Let's assume GPUEngine constructor is updated or we pass appropriate values from _deviceNamesList[engineIndex]
-            // if it contains structured info like "0:1024:32" (gpuId:gridX:gridY)
-
-            int gpuId_to_use = engineIndex; // Default: use engineIndex as gpuId if not specified otherwise
-            int gridSizeX_to_use = 1024; // Default or from config
-            int gridSizeY_to_use = 32; // Default or from config
-            
-            // Convert _targets to uint32_t hash160 array
-            std::vector<uint32_t> hash160Array;
-            for (const auto& target : _targets) {
-                // Assuming each target is a hex string of a 20-byte hash
-                std::vector<unsigned char> bytes = hex2bytes(target);
-                if (bytes.size() == 20) { // Proper HASH160 size
-                    for (int i = 0; i < 20; i += 4) {
-                        uint32_t value = 0;
-                        for (int j = 0; j < 4 && (i + j) < 20; j++) {
-                            value |= ((uint32_t)bytes[i + j]) << (j * 8);
-                        }
-                        hash160Array.push_back(value);
+        _logger->Log(LogLevel::INFO, "Initializing GPUEngine for device: %s (Index: %d)", _deviceNamesList[engineIndex].c_str(), engineIndex);
+        
+        // Convert _targets to uint32_t hash160 array
+        std::vector<uint32_t> hash160Array;
+        for (const auto& target : _targets) {
+            // Assuming each target is a hex string of a 20-byte hash
+            std::vector<unsigned char> bytes = hex2bytes(target);
+            if (bytes.size() == 20) { // Proper HASH160 size
+                for (int i = 0; i < 20; i += 4) {
+                    uint32_t value = 0;
+                    for (int j = 0; j < 4 && (i + j) < 20; j++) {
+                        value |= ((uint32_t)bytes[i + j]) << (j * 8);
                     }
+                    hash160Array.push_back(value);
                 }
             }
-            
-            // GPUEngine constructor signature:
-            // GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_t maxFound,
-            //          const uint32_t* hash160, int numHash160, const std::string& startKeyHex, const std::string& endKeyHex);
-            _gpuEngines[engineIndex] = new GPUEngine(
-                gridSizeX_to_use,                              // nbThreadGroup
-                gridSizeY_to_use,                              // nbThreadPerGroup
-                gpuId_to_use,                                  // gpuId
-                0,                                             // maxFound 
-                hash160Array.empty() ? nullptr : hash160Array.data(), // hash160 array
-                hash160Array.size() / 5,                       // numHash160 (number of 160-bit hashes)
-                _start_key_hex,                                // startKeyHex
-                _end_key_hex                                   // endKeyHex
-            );
-            
-            if (!_gpuEngines[engineIndex] || _gpuEngines[engineIndex]->deviceName.empty()) {
-                 _logger->Log(LogLevel::ERROR, "GPUEngine initialization failed for device %s", _deviceNamesList[engineIndex].c_str());
-                 isAlive[engineIndex] = false; // Mark this thread/engine as not alive
-                 hasStarted[engineIndex] = true; // It attempted to start
-                 delete _gpuEngines[engineIndex];
-                 _gpuEngines[engineIndex] = nullptr;
-                 return;
-            }
-             _logger->Log(LogLevel::INFO, "GPUEngine started on: %s", _gpuEngines[engineIndex]->deviceName.c_str());
-        } else {
-            _logger->Log(LogLevel::ERROR, "Invalid engineIndex %d for FindKeyGPU.", engineIndex);
-            return;
         }
+        
+        // GPUEngine constructor signature:
+        // GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_t maxFound,
+        //          const uint32_t* hash160, int numHash160, const std::string& startKeyHex, const std::string& endKeyHex);
+        _gpuEngines[engineIndex] = new GPUEngine(
+            gridSizeX_to_use,                              // nbThreadGroup
+            gridSizeY_to_use,                              // nbThreadPerGroup
+            gpuId_to_use,                                  // gpuId
+            100,                                           // maxFound 
+            hash160Array.empty() ? nullptr : hash160Array.data(), // hash160 array
+            hash160Array.size() / 5,                       // numHash160 (number of 160-bit hashes)
+            _start_key_hex,                                // startKeyHex
+            _end_key_hex                                   // endKeyHex
+        );
+        
+        if (!_gpuEngines[engineIndex] || _gpuEngines[engineIndex]->deviceName.empty()) {
+             _logger->Log(LogLevel::ERROR, "GPUEngine initialization failed for device %s", _deviceNamesList[engineIndex].c_str());
+             isAlive[engineIndex] = false; // Mark this thread/engine as not alive
+             hasStarted[engineIndex] = true; // It attempted to start
+             delete _gpuEngines[engineIndex];
+             _gpuEngines[engineIndex] = nullptr;
+             return;
+        }
+         _logger->Log(LogLevel::INFO, "GPUEngine started on: %s", _gpuEngines[engineIndex]->deviceName.c_str());
+    } else {
+        _logger->Log(LogLevel::INFO, "Using existing GPUEngine for device: %s", _deviceNamesList[engineIndex].c_str());
     }
     
     GPUEngine* currentEngine = _gpuEngines[engineIndex];
@@ -579,6 +581,36 @@ PubHunt::PubHunt(const std::vector<std::vector<uint8_t>>& inputHashes, const std
 
 // Implementation of the Search method called by Main.cpp
 void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& should_exit) {
+    // Store the GPU IDs and gridSizes for use by the GPU engines
+    _logger->Log(LogLevel::INFO, "Setting up with %d GPUs", (int)gpuId.size());
+    
+    // We have different device naming/map now
+    _deviceNamesList.clear();
+    for (size_t i = 0; i < gpuId.size(); i++) {
+        _deviceNamesList.push_back(std::to_string(gpuId[i]));
+        _logger->Log(LogLevel::INFO, "Adding GPU #%d to device list", gpuId[i]);
+    }
+    
+    _deviceCount = std::max(1u, static_cast<unsigned int>(_deviceNamesList.size()));
+    _deviceTotalHashes.resize(_deviceCount, 0);
+    _deviceSpeeds.resize(_deviceCount, 0.0);
+    
+#ifdef WITHGPU
+    // Create a map of GPU ID to grid sizes - for FindKeyGPU method to use
+    _gpuEngines.resize(_deviceCount, nullptr);
+    
+    // Store gridSize per device - these should come in pairs (x,y) for each GPU
+    if (gridSize.size() == gpuId.size() * 2) {
+        for (size_t i = 0; i < gpuId.size(); i++) {
+            _logger->Log(LogLevel::INFO, "GPU #%d grid size: %dx%d", 
+                         gpuId[i], gridSize[i * 2], gridSize[i * 2 + 1]);
+        }
+    } else {
+        _logger->Log(LogLevel::WARNING, "Grid size mismatch: expected %d values, got %d", 
+                     gpuId.size() * 2, (int)gridSize.size());
+    }
+#endif
+    
     // Map old interface to new one
     _stopped = should_exit;
     
