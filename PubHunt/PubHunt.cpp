@@ -523,5 +523,79 @@ char* PubHunt::toTimeStr(int sec, char* timeStr) { // timeStr should be char tim
     return timeStr;
 }
 
+// Implementation of the second constructor used by Main.cpp
+PubHunt::PubHunt(const std::vector<std::vector<uint8_t>>& inputHashes, const std::string& outputFile,
+                 const std::string& startKeyHex, const std::string& endKeyHex) {
+    // Convert uint8_t hashes to string targets for internal use
+    std::vector<std::string> targets;
+    for (const auto& hash : inputHashes) {
+        // Convert byte vector to hex string
+        std::string hexStr;
+        for (auto byte : hash) {
+            char hex[3];
+            sprintf(hex, "%02x", byte);
+            hexStr += hex;
+        }
+        targets.push_back(hexStr);
+    }
+
+    // Determine reasonable defaults
+    int numThreads = 1; // Default to 1 thread
+    int generationMode = 0; // Default to random mode
+    std::string deviceNames = "0"; // Default to first GPU
+    bool useRange = !startKeyHex.empty() && !endKeyHex.empty();
+
+    // Call the main constructor
+    // Initialize members
+    _targets = std::move(targets);
+    _numThreads = numThreads;
+    _generationMode = generationMode;
+    _deviceNames = deviceNames;
+    _use_range = useRange;
+    _start_key_hex = startKeyHex;
+    _end_key_hex = endKeyHex;
+    
+    // Initialize remaining members
+    _running = false;
+    _stopped = false;
+    _totalHashes = 0;
+    _startTime = 0;
+    _deviceCount = 0;
+
+    // Parse device names
+    if (!_deviceNames.empty()) {
+        std::istringstream iss(_deviceNames);
+        std::string device;
+        while (std::getline(iss, device, ',')) {
+            _deviceNamesList.push_back(device);
+        }
+    }
+    
+    // Allocate space for device statistics
+    _deviceCount = std::max(1u, static_cast<unsigned int>(_deviceNamesList.size()));
+    _deviceTotalHashes.resize(_deviceCount, 0);
+    _deviceSpeeds.resize(_deviceCount, 0.0);
+    
+    // Initialize thread pool and logger
+    _pool = new ThreadPool(_numThreads);
+    _logger = new Logger();
+    
+    // Reset state tracking arrays
+    std::fill(isAlive, isAlive + 128, false);
+    std::fill(hasStarted, hasStarted + 128, false);
+}
+
+// Implementation of the Search method called by Main.cpp
+void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& should_exit) {
+    // Map old interface to new one
+    _stopped = should_exit;
+    
+    // Start the search
+    search();
+    
+    // Update the passed should_exit flag when done
+    should_exit = _stopped;
+}
+
 
 
