@@ -111,6 +111,7 @@ private:
 	void workThread(int threadId, const std::string& deviceName);
 #ifdef WITHGPU
 	void FindKeyGPU(int threadId, const std::string& deviceName);
+	void output(const ITEM& item);
 #endif
 	void FindKeyCPU(int threadId);
 
