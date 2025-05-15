@@ -33,7 +33,11 @@
 #define MAX_GPUS 1 // Or a suitable default
 #endif
 #ifndef ITEM // Define a dummy ITEM if output is not fully conditionalized in cpp
-struct ITEM { uint64_t x; uint64_t y; /* simplified */ };
+struct ITEM { 
+    uint32_t thId;
+    uint8_t* pubKey;
+    uint8_t* hash160;
+};
 #endif
 #endif
 
@@ -110,7 +114,7 @@ private:
 
 	void workThread(int threadId, const std::string& deviceName);
 #ifdef WITHGPU
-	void FindKeyGPU(int threadId, const std::string& deviceName);
+	void FindKeyGPU(int engineIndex, const std::string& deviceName);
 	void output(const ITEM& item);
 #endif
 	void FindKeyCPU(int threadId);

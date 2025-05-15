@@ -128,12 +128,28 @@ void PubHunt::output(const ITEM& item) {
     // This is the new output method, should use instance members for logging/file output
     std::lock_guard<std::mutex> lock(_mutex); // Use instance mutex
 
-    // Example: Log to console via Logger
-    // Convert ITEM to a string representation if necessary
-    // For now, a placeholder:
-    char buffer[128]; // Ensure buffer is large enough
-    snprintf(buffer, sizeof(buffer), "Found Key X: %016lx%016lx%016lx%016lx", item.x[0], item.x[1], item.x[2], item.x[3]);
-    _logger->Log(LogLevel::FOUND, "%s", buffer);
+    // Log the thread ID
+    _logger->Log(LogLevel::FOUND, "Found Key by thread: %u", item.thId);
+    
+    // If pubKey is valid, print it
+    if (item.pubKey != nullptr) {
+        char pubKeyHex[150]; // 65 bytes * 2 chars per byte + 1 for null
+        pubKeyHex[0] = 0;
+        for (int i = 0; i < 65 && item.pubKey != nullptr; i++) {
+            sprintf(pubKeyHex + strlen(pubKeyHex), "%02X", item.pubKey[i]);
+        }
+        _logger->Log(LogLevel::FOUND, "PubKey: %s", pubKeyHex);
+    }
+
+    // If hash160 is valid, print it
+    if (item.hash160 != nullptr) {
+        char hash160Hex[50]; // 20 bytes * 2 chars per byte + 1 for null
+        hash160Hex[0] = 0;
+        for (int i = 0; i < 20 && item.hash160 != nullptr; i++) {
+            sprintf(hash160Hex + strlen(hash160Hex), "%02X", item.hash160[i]);
+        }
+        _logger->Log(LogLevel::FOUND, "Hash160: %s", hash160Hex);
+    }
 
     // Handle writing to file if outputFile is configured (needs _outputFile member)
     // FILE* f = stdout;
