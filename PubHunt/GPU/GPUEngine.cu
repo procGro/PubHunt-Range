@@ -37,7 +37,6 @@ __host__ uint64_t HostBN_Sub(uint64_t r[4], const uint64_t a[4], const uint64_t 
 __host__ uint64_t HostBN_AddOneInplace(uint64_t r[4]);
 __global__ void init_curand_states_kernel(curandStatePhilox4_32_10_t *states, unsigned long long seed, int num_states);
 __global__ void generate_keys_in_range_kernel(uint64_t* output_keys, curandStatePhilox4_32_10_t* states, const uint64_t* dev_start_key, const uint64_t* dev_range_span, int num_keys_to_generate);
-__device__ uint4 curand_philox4x32_10(curandStatePhilox4_32_10_t *state);
 
 // ---------------------------------------------------------------------------------------
 
@@ -533,9 +532,19 @@ __global__ void init_curand_states_kernel(curandStatePhilox4_32_10_t *states, un
 // Device function for 256-bit random number (fills r with 4 uint64_t)
 // Uses Philox, which is good for parallel PRNG.
 __device__ void DeviceBN_GetRandom256(curandStatePhilox4_32_10_t *state, uint64_t r[4]) {
-	// Philox4_32_10 generates four 32-bit numbers. We need eight for four 64-bit numbers.
-	uint4 r1 = curand_philox4x32_10(state);
-	uint4 r2 = curand_philox4x32_10(state);
+	// Use curand to generate random 32-bit values and combine them into 64-bit
+	uint4 r1, r2;
+	// Use curand4 to generate 4 random 32-bit values at once
+	r1.x = curand(state);
+	r1.y = curand(state);
+	r1.z = curand(state);
+	r1.w = curand(state);
+	r2.x = curand(state);
+	r2.y = curand(state);
+	r2.z = curand(state);
+	r2.w = curand(state);
+	
+	// Combine 32-bit values into 64-bit values
 	r[0] = ((uint64_t)r1.y << 32) | r1.x;
 	r[1] = ((uint64_t)r1.w << 32) | r1.z;
 	r[2] = ((uint64_t)r2.y << 32) | r2.x;
