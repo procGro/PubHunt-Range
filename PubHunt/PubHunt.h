@@ -75,9 +75,15 @@ public:
 	PubHunt(const std::vector<std::string>& targets, int numThreads, int generationMode, const std::string& deviceNames,
 			bool useRange = false, const std::string& startKeyHex = "", const std::string& endKeyHex = "");
 
+	// Constructor used by Main.cpp
+	PubHunt(const std::vector<std::vector<uint8_t>>& inputHashes, const std::string& outputFile,
+			const std::string& startKeyHex = "", const std::string& endKeyHex = "");
+
 	~PubHunt();
 
 	void search();
+	// Method called from Main.cpp
+	void Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& should_exit);
 	void stop();
 	bool isRunning() const;
 	uint64_t getTotalHashes() const;
