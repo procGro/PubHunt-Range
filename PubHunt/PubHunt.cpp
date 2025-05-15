@@ -198,8 +198,7 @@ void PubHunt::search() {
 #ifdef WITHGPU
         for(unsigned int i=0; i < _deviceCount; ++i) {
             if (_gpuEngines[i]) { // Check if engine exists
-                 // Use direct member and getter methods that exist in GPUEngine
-                 // GetHashCount and GetSpeed don't exist, so we'll track these ourselves
+                 // GPUEngine doesn't have these methods, we'll track manually instead
                  // _deviceTotalHashes[i] = _gpuEngines[i]->GetHashCount();
                  // _deviceSpeeds[i] = _gpuEngines[i]->GetSpeed();
                  currentTotalHashes += _deviceTotalHashes[i];
@@ -245,7 +244,7 @@ void PubHunt::stop() {
 #ifdef WITHGPU
     for (GPUEngine* engine : _gpuEngines) {
         if (engine) {
-            // GPUEngine doesn't have Stop method, we'll control via _stopped flag
+            // GPUEngine doesn't have a Stop method, we'll control via _stopped flag
             // engine->Stop();
         }
     }
@@ -368,26 +367,11 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName /*unused
             int gpuId_to_use = engineIndex; // Default: use engineIndex as gpuId if not specified otherwise
             int gridSizeX_to_use = 1024; // Default or from config
             int gridSizeY_to_use = 32; // Default or from config
-
-            // Example of parsing deviceName if it contains more info:
-            // This is a placeholder, actual parsing might be more robust.
-            // sscanf(_deviceNamesList[engineIndex].c_str(), "%d:%d:%d", &gpuId_to_use, &gridSizeX_to_use, &gridSizeY_to_use);
-
-            // TODO: _targets needs to be converted to the format GPUEngine expects (e.g., uint32_t* hash160)
-            // This conversion should happen once, perhaps in PubHunt constructor or before starting search.
-            // For now, assuming GPUEngine can take _targets directly or a placeholder.
-            uint32_t* flat_hashes = nullptr; // Placeholder for converted targets
-            int num_flat_hashes = 0;      // Placeholder
-
-            // GPUEngine constructor signature
-            // GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_t maxFound,
-            //     const uint32_t* hash160, int numHash160, const std::string& startKeyHex, const std::string& endKeyHex);
             
             // Convert _targets to uint32_t hash160 array
             std::vector<uint32_t> hash160Array;
             for (const auto& target : _targets) {
-                // Assuming each target is a hex string of a 20-byte (160-bit) hash
-                // We need to convert it to uint32_t array (5 x uint32_t per hash)
+                // Assuming each target is a hex string of a 20-byte hash
                 std::vector<unsigned char> bytes = hex2bytes(target);
                 if (bytes.size() == 20) { // Proper HASH160 size
                     for (int i = 0; i < 20; i += 4) {
@@ -400,7 +384,9 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName /*unused
                 }
             }
             
-            // Now create the GPUEngine with the correct parameters
+            // GPUEngine constructor signature:
+            // GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_t maxFound,
+            //          const uint32_t* hash160, int numHash160, const std::string& startKeyHex, const std::string& endKeyHex);
             _gpuEngines[engineIndex] = new GPUEngine(
                 gridSizeX_to_use,                              // nbThreadGroup
                 gridSizeY_to_use,                              // nbThreadPerGroup
