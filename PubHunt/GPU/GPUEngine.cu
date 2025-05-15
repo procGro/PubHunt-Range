@@ -20,19 +20,24 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
-
 #include <stdint.h>
 #include "../Timer.h"
-
 #include "GPUMath.h"
 #include "GPUHash.h"
 #include "GPUCompute.h"
-
 #include <string> // For std::string
 #include <vector> // For std::vector in helpers
 #include <stdexcept> // For std::runtime_error
 #include <iomanip> // For std::setw, std::setfill
 #include <sstream> // For std::ostringstream
+
+// Forward declarations for functions used before they're defined
+__host__ bool HostBN_HexToU64Array(const std::string& hex, uint64_t arr[4]);
+__host__ uint64_t HostBN_Sub(uint64_t r[4], const uint64_t a[4], const uint64_t b[4]);
+__host__ uint64_t HostBN_AddOneInplace(uint64_t r[4]);
+__global__ void init_curand_states_kernel(curandStatePhilox4_32_10_t *states, unsigned long long seed, int num_states);
+__global__ void generate_keys_in_range_kernel(uint64_t* output_keys, curandStatePhilox4_32_10_t* states, const uint64_t* dev_start_key, const uint64_t* dev_range_span, int num_keys_to_generate);
+__device__ uint4 curand_philox4x32_10(curandStatePhilox4_32_10_t *state);
 
 // ---------------------------------------------------------------------------------------
 
