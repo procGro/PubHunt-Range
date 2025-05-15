@@ -26,7 +26,7 @@
 #include "Logger.h" // Assuming Logger is used
 
 #ifdef WITHGPU
-#include "GPUEngine.h" // For ITEM struct and MAX_GPUS
+#include "GPU/GPUEngine.h" // For ITEM struct and MAX_GPUS
 #else
 // Define MAX_GPUS if not defined WITHGPU, or ensure it's defined elsewhere if used unconditionally
 #ifndef MAX_GPUS
