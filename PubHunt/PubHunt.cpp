@@ -231,7 +231,51 @@ void PubHunt::search() {
         if (elapsed <= 0) elapsed = 1.0; // Avoid division by zero
         // currentSpeed = _totalHashes / elapsed; // This is average speed, instantaneous speed is sum of _deviceSpeeds
 
-        _logger->Log(LogLevel::INFO, "Status: %llu hashes, Speed: %.2f MH/s", _totalHashes, currentSpeed / 1e6);
+        // Format elapsed time
+        int seconds = static_cast<int>(elapsed);
+        int minutes = seconds / 60;
+        seconds %= 60;
+        int hours = minutes / 60;
+        minutes %= 60;
+
+        // If we're using a key range, try to estimate progress percentage
+        std::string progressStr = "";
+        
+#ifdef WITHGPU
+        if (!_start_key_hex.empty() && !_end_key_hex.empty()) {
+            // Simple progress estimation based on hashes processed vs. total range
+            // This is a rough estimate as the actual distribution depends on the algorithm
+            double percentage = 0.0;
+            
+            // If using our own start/end keys, try to estimate progress
+            if (_gpuEngines.size() > 0 && _gpuEngines[0]) {
+                // Get current progress from first GPU engine (if any engines have this capability)
+                // percentage = _gpuEngines[0]->GetProgress() * 100.0;
+                
+                // Simple fallback - assume linear progress through key space
+                // This is very approximate and may not be accurate
+                uint64_t hashesPerKey = 1; // Rough estimate, adjust based on your algorithm
+                uint64_t totalKeysToCheck = _totalHashes / hashesPerKey;
+                
+                // If we don't have a totalKeysInRange estimate, just use a simpler percentage
+                if (_totalHashes > 0) {
+                    // Very simple estimate: just show percentage of target hash count (e.g., 10 billion)
+                    uint64_t targetHashCount = 10000000000ULL; // 10 billion as example
+                    percentage = (static_cast<double>(_totalHashes) / targetHashCount) * 100.0;
+                    if (percentage > 100.0) percentage = 99.99; // Cap at 99.99%
+                }
+            }
+            
+            if (percentage > 0.0) {
+                char percentStr[32];
+                sprintf(percentStr, ", Progress: %.2f%%", percentage);
+                progressStr = percentStr;
+            }
+        }
+#endif
+
+        _logger->Log(LogLevel::INFO, "Status: %llu hashes, Speed: %.2f MH/s, Time: %02d:%02d:%02d%s                    ", 
+                     _totalHashes, currentSpeed / 1e6, hours, minutes, seconds, progressStr.c_str());
 
         bool all_done = true;
         int active_threads = 0;

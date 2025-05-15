@@ -6,6 +6,7 @@
 #include <cstdarg> // For va_list, va_start, va_end
 #include <mutex>   // For std::mutex
 #include <iostream> // For std::cout, std::cerr
+#include <cstring>  // For strncmp
 
 enum class LogLevel {
     DEBUG,
@@ -53,15 +54,28 @@ public:
                 levelStr = "[FOUND]";
                 break;
         }
-        // fprintf(stream, "%s %s: ", timeBuffer, levelStr);
-        fprintf(stream, "%s: ", levelStr);
+        
+        // Check if this is a status update (starts with "Status:")
+        bool isStatusUpdate = (level == LogLevel::INFO && strncmp(format, "Status:", 7) == 0);
+        
+        if (isStatusUpdate) {
+            // For status updates, use carriage return to keep output on same line
+            fprintf(stream, "\r%s: ", levelStr);
+        } else {
+            // For all other log messages, use normal format with newline
+            fprintf(stream, "%s: ", levelStr);
+        }
 
         va_list args;
         va_start(args, format);
         vfprintf(stream, format, args);
         va_end(args);
 
-        fprintf(stream, "\n");
+        // Only add newline for non-status messages
+        if (!isStatusUpdate) {
+            fprintf(stream, "\n");
+        }
+        
         fflush(stream); // Ensure immediate output, especially for errors/found items
     }
 
