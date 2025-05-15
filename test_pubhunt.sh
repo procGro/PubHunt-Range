@@ -12,12 +12,9 @@ echo -n "be9d31fa3d712c1de1697eb61d1e41fcbab5b0e7" > test.txt
 # Expected public key to find
 EXPECTED_KEY="03abead16bdf149ca87efe567c86307b2dc95d73235a4d089d359126c4f021d2b2"
 
-# Run PubHunt with the specified parameters
-# Assuming the executable is directly in the PubHunt directory
-COMMAND="/root/PubHunt-Range/PubHunt/PubHunt -t test.txt -gpu -range 0000000000000000000000000000000000000000800000000000000000000000:0000000000000000000000000000000000000000ffffffffffffffffffffffff"
-
-# Uncomment if executable is in /bin subdirectory
-# COMMAND="/root/PubHunt-Range/PubHunt/bin/PubHunt -t test.txt -gpu -range 0000000000000000000000000000000000000000800000000000000000000000:0000000000000000000000000000000000000000ffffffffffffffffffffffff"
+# Run PubHunt with the specified parameters using the correct command format
+# Based on the actual command that works on the user's system
+COMMAND="/root/PubHunt-Range/PubHunt/PubHunt -gi 0 --range 0000000000000000000000000000000000000000800000000000000000000000:0000000000000000000000000000000000000000ffffffffffffffffffffffff test.txt"
 
 echo -e "\e[33mRunning command: $COMMAND\e[0m"
 echo -e "\e[33m----------------------------------\e[0m"
