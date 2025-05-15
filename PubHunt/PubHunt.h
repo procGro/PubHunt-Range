@@ -26,8 +26,7 @@
 #include "Logger.h" // Assuming Logger is used
 
 #ifdef WITHGPU
-// #include "GPUEngine.h" // For ITEM struct and MAX_GPUS
-#include "GPU/GPUEngine.h" // For ITEM struct and MAX_GPUS
+#include "GPUEngine.h" // For ITEM struct and MAX_GPUS
 #else
 // Define MAX_GPUS if not defined WITHGPU, or ensure it's defined elsewhere if used unconditionally
 #ifndef MAX_GPUS
@@ -74,7 +73,7 @@ class PubHunt
 public:
 
 	PubHunt(const std::vector<std::string>& targets, int numThreads, int generationMode, const std::string& deviceNames,
-			bool useRange, const std::string& startKeyHex, const std::string& endKeyHex);
+			bool useRange = false, const std::string& startKeyHex = "", const std::string& endKeyHex = "");
 
 	~PubHunt();
 
@@ -89,7 +88,6 @@ public:
 	std::string getDeviceName(unsigned int n) const;
 	uint64_t getDeviceTotalHashes(unsigned int n) const;
 	double getDeviceSpeed(unsigned int n) const;
-	void output(const ITEM& item);
 #endif
 
 	unsigned int getNumThreads() const;
