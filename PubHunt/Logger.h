@@ -58,12 +58,20 @@ public:
         // Check if this is a status update (starts with "Status:")
         bool isStatusUpdate = (level == LogLevel::INFO && strncmp(format, "Status:", 7) == 0);
         
+        // For non-status messages, add a newline first if we're in the middle of a status line
+        if (!isStatusUpdate && _lastWasStatus) {
+            fprintf(stream, "\n");
+            _lastWasStatus = false;
+        }
+        
         if (isStatusUpdate) {
             // For status updates, use carriage return to keep output on same line
             fprintf(stream, "\r%s: ", levelStr);
+            _lastWasStatus = true;
         } else {
             // For all other log messages, use normal format with newline
             fprintf(stream, "%s: ", levelStr);
+            _lastWasStatus = false;
         }
 
         va_list args;
@@ -76,7 +84,8 @@ public:
             fprintf(stream, "\n");
         }
         
-        fflush(stream); // Ensure immediate output, especially for errors/found items
+        // Ensure immediate output, especially for errors/found items
+        fflush(stream);
     }
 
     void SetMinLevel(LogLevel level) {
@@ -86,6 +95,7 @@ public:
 private:
     LogLevel _minLevel;
     std::mutex _logMutex;
+    bool _lastWasStatus = false; // Track if the last message was a status update
 };
 
 #endif // LOGGER_H 

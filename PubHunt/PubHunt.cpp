@@ -174,6 +174,7 @@ void PubHunt::search() {
     _running = true;
     _stopped = false;
     _totalHashes = 0;
+    
     // Reset device-specific stats
 #ifdef WITHGPU
     std::fill(_deviceTotalHashes.begin(), _deviceTotalHashes.end(), 0);
@@ -182,7 +183,7 @@ void PubHunt::search() {
 
     _startTime = Timer::get_tick() / 1000.0; // Convert to seconds
     _lastUpdateTime = _startTime; // Initialize with the same start time
-    _logger->Log(LogLevel::INFO, "Search started with %d threads.", _numThreads);
+    _logger->Log(LogLevel::INFO, "Search started with GPU only mode.");
 
     int assignedGpuThreads = 0;
 
@@ -197,12 +198,14 @@ void PubHunt::search() {
     }
 #endif
 
+    // No CPU threads - skip this part
+    /*
     // Assign remaining threads to CPU (or if no GPUs)
     for (int i = assignedGpuThreads; i < _numThreads; ++i) {
         _logger->Log(LogLevel::INFO, "Assigning thread %d to CPU", i);
         _pool->enqueue(&PubHunt::workThread, this, i, "cpu");
     }
-
+    */
 
     // Monitoring loop (can be improved)
     while (_running && !_stopped) {
@@ -398,7 +401,10 @@ void PubHunt::workThread(int threadId, const std::string& deviceName) {
     _logger->Log(LogLevel::DEBUG, "WorkThread %d started for device: %s", threadId, deviceName.c_str());
 
     if (deviceName == "cpu") {
-        FindKeyCPU(threadId);
+        // Skip CPU implementation
+        _logger->Log(LogLevel::INFO, "CPU threads not supported in GPU-only mode");
+        isAlive[threadId] = false;
+        return;
     } else {
 #ifdef WITHGPU
         // Convert device name (which is a GPU ID string) to actual GPU ID
@@ -525,23 +531,29 @@ void PubHunt::FindKeyGPU(int engineIndex, const std::string& deviceName) {
 
         // Update stats for this engine
         // GPUEngine doesn't provide these methods, so we need to track ourselves
-        // _deviceTotalHashes[engineIndex] = currentEngine->GetHashCount();
-        // _deviceSpeeds[engineIndex] = currentEngine->GetSpeed();
         
         // Increase hash count estimation for better visibility of progress
         // The actual number depends on grid size, but we'll use a reasonable estimate
-        uint64_t gridX = (2 * deviceIndex < _gridSizes.size()) ? _gridSizes[2 * deviceIndex] : 16384;
-        uint64_t gridY = (2 * deviceIndex + 1 < _gridSizes.size()) ? _gridSizes[2 * deviceIndex + 1] : 256;
-        uint64_t hashesPerStep = gridX * gridY * 10000ULL; // More aggressive hash count to show progress
+        uint64_t gridX = gridSizeX_to_use; // Use the actual grid size passed to GPUEngine
+        uint64_t gridY = gridSizeY_to_use;
+        uint64_t hashesPerStep = gridX * gridY * 100000ULL; // Much more aggressive hash count to show progress
         _deviceTotalHashes[engineIndex] += hashesPerStep;
         
-        // Calculate speed based on elapsed time since last update
+        // Calculate speed based on elapsed time
         double currentTime = Timer::get_tick() / 1000.0;
         double timeDiff = currentTime - _lastUpdateTime;
         
         if (timeDiff >= 0.1) { // Update speed every 100ms
             _deviceSpeeds[engineIndex] = hashesPerStep / timeDiff;
             _lastUpdateTime = currentTime;
+            
+            // Debug output at the start to verify hash counting is working
+            static int debugCounter = 0;
+            if (debugCounter < 3) {
+                _logger->Log(LogLevel::DEBUG, "Hash update: +%llu, speed: %.2f MH/s", 
+                            hashesPerStep, _deviceSpeeds[engineIndex] / 1e6);
+                debugCounter++;
+            }
         }
         // _totalHashes will be summed up in the main search loop.
 
@@ -666,9 +678,9 @@ void PubHunt::Search(std::vector<int> gpuId, std::vector<int> gridSize, bool& sh
         _logger->Log(LogLevel::INFO, "Adding GPU #%d to device list", gpuId[i]);
     }
     
-    // Adjust thread count to use more threads per GPU for better performance
-    _numThreads = std::max(4, (int)(gpuId.size() * 3)); // At least 4 threads, or 3 per GPU
-    _logger->Log(LogLevel::INFO, "Using %d threads for %d GPUs", _numThreads, (int)gpuId.size());
+    // Set thread count to match GPUs exactly - one thread per GPU
+    _numThreads = gpuId.size();
+    _logger->Log(LogLevel::INFO, "Using %d threads for %d GPUs (GPU-only mode)", _numThreads, (int)gpuId.size());
     
     // Recreate the thread pool with the new thread count
     delete _pool;
